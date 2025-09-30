@@ -5,8 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Shared Calendar — Rooms, Presence & Multi‑User Availability</title>
   <meta name="description" content="A single-file calendar with rooms, presence, and per-user availability. Optionally live via Firebase (paste your config)." />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://www.gstatic.com; connect-src 'self' https://firestore.googleapis.com; object-src 'none'; base-uri 'none'">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <meta http-equiv="Content-Security-Policy"
+  content="
+    default-src 'self';
+    img-src 'self' data:;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src https://fonts.gstatic.com;
+    script-src 'self' 'unsafe-inline' https://www.gstatic.com;
+    connect-src 'self'
+      https://firestore.googleapis.com
+      https://firebaseinstallations.googleapis.com
+      https://www.googleapis.com;
+    object-src 'none';
+    base-uri 'none'
+  ">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
@@ -242,7 +254,7 @@
       const SINGLETON = window[__SC_KEY__];
 
     const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAKdrW--5amKlOZIZaBrhiZYnsw3xByFP4",
+  apiKey: "AIzaSyAKdrW--5amKIO2IZaBrhiZYnsw3xByFP4",
   authDomain: "calend-2aabe.firebaseapp.com",
   projectId: "calend-2aabe",
   // Optional for this app, but fine to include:
