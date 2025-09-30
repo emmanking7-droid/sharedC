@@ -241,17 +241,15 @@
       'use strict';
       const SINGLETON = window[__SC_KEY__];
 
-    const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAKdrW--5amKlOZIZaBrhiZYnsw3xByFP4",
-  authDomain: "calend-2aabe.firebaseapp.com",
-  projectId: "calend-2aabe",
-  // Optional for this app, but fine to include:
-  storageBucket: "calend-2aabe.appspot.com",    // prefer appspot.com form
-  messagingSenderId: "70040581273",
-  appId: "1:70040581273:web:c6852a7f467be95a457408",
-  measurementId: "G-QLT6G2B5WQ"
-};
-
+    const firebaseConfig = {
+    apiKey: "AIzaSyAKdrW--5amKIO2IZaBrhiZYnsw3xByFP4",
+    authDomain: "calend-2aabe.firebaseapp.com",
+    projectId: "calend-2aabe",
+    storageBucket: "calend-2aabe.firebasestorage.app",
+    messagingSenderId: "70040581273",
+    appId: "1:70040581273:web:c6852a7f467be95a457408",
+    measurementId: "G-QLT6G2B5WQ"
+  };
       const CLIENT_ID = `c_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
       const $ = (s,r=document)=>r.querySelector(s);
       const pad=(n)=>String(n).padStart(2,'0');
