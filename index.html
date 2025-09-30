@@ -379,6 +379,11 @@
 
       btnCreateRoom.onclick=()=>{ const nm=sanitizeRoomName(newRoomInput.value); if(!nm) return; if(!rooms.includes(nm)){ rooms.unshift(nm); saveRooms(); } roomInput.value=nm; joinRoom(); newRoomInput.value=''; roomsPopover.classList.remove('open'); };
       btnJoin.onclick=()=> joinRoom(); btnLeave.onclick=()=> leaveRoom();
+      [nameInput, roomInput].forEach(el => {
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); joinRoom(); }
+  });
+});
 
       btnAddUser.onclick=addUserFromInput;
       newUserName.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); addUserFromInput(); } });
