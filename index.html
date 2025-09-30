@@ -5,20 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Shared Calendar — Rooms, Presence & Multi‑User Availability</title>
   <meta name="description" content="A single-file calendar with rooms, presence, and per-user availability. Optionally live via Firebase (paste your config)." />
- <meta http-equiv="Content-Security-Policy"
-  content="
-    default-src 'self';
-    img-src 'self' data:;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-    font-src https://fonts.gstatic.com;
-    script-src 'self' 'unsafe-inline' https://www.gstatic.com;
-    connect-src 'self'
-      https://firestore.googleapis.com
-      https://firebaseinstallations.googleapis.com
-      https://www.googleapis.com;
-    object-src 'none';
-    base-uri 'none'
-  ">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://www.gstatic.com; connect-src 'self' https://firestore.googleapis.com; object-src 'none'; base-uri 'none'">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
@@ -253,12 +241,11 @@
       'use strict';
       const SINGLETON = window[__SC_KEY__];
 
-    const FIREBASE_CONFIG = {
+   const firebaseConfig = {
   apiKey: "AIzaSyAKdrW--5amKIO2IZaBrhiZYnsw3xByFP4",
   authDomain: "calend-2aabe.firebaseapp.com",
   projectId: "calend-2aabe",
-  // Optional for this app, but fine to include:
-  storageBucket: "calend-2aabe.appspot.com",    // prefer appspot.com form
+  storageBucket: "calend-2aabe.firebasestorage.app",
   messagingSenderId: "70040581273",
   appId: "1:70040581273:web:c6852a7f467be95a457408",
   measurementId: "G-QLT6G2B5WQ"
@@ -391,11 +378,6 @@
 
       btnCreateRoom.onclick=()=>{ const nm=sanitizeRoomName(newRoomInput.value); if(!nm) return; if(!rooms.includes(nm)){ rooms.unshift(nm); saveRooms(); } roomInput.value=nm; joinRoom(); newRoomInput.value=''; roomsPopover.classList.remove('open'); };
       btnJoin.onclick=()=> joinRoom(); btnLeave.onclick=()=> leaveRoom();
-      [nameInput, roomInput].forEach(el => {
-  el.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); joinRoom(); }
-  });
-});
 
       btnAddUser.onclick=addUserFromInput;
       newUserName.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); addUserFromInput(); } });
@@ -450,57 +432,25 @@
 
       function hashColor(id){ let h=0; for(let i=0;i<id.length;i++){ h=(h*31+id.charCodeAt(i))|0; } const colors=PALETTE; return colors[Math.abs(h)%colors.length]; }
 
-      async function joinRoom() {
-  state.userName = (nameInput.value || '').trim() || 'Guest';
-  const nextRoom = sanitizeRoomName(roomInput.value) || 'default';
-
-  // Always tear down previous listeners/intervals
-  await leaveRoom(false);
-
-  state.room = nextRoom;
-  loadLocal(state.room);
-  roomLabel.textContent = `Room: ${state.room}`;
-  if (!rooms.includes(state.room)) { rooms.unshift(state.room); saveRooms(); }
-
-  if (!fbReady) {
-    liveBadge.textContent = `Local room: ${state.room} (no sync)`;
-    render();
-    return;
-  }
-
-  try {
-    const { collection, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp, query, orderBy } = window.__fb;
-
-    // Subscribe to events
-    const eventsCol = collection(db, 'rooms', state.room, 'events');
-    unsubEvents = onSnapshot(query(eventsCol, orderBy('date'), orderBy('start')), (snap) => {
-      state.events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      render();
-    });
-
-    // Presence: (re)create & heartbeat even if room name didn't change
-    const presenceCol = collection(db, 'rooms', state.room, 'presence');
-    presenceDocRef = doc(presenceCol, CLIENT_ID);
-    await setDoc(presenceDocRef, { id: CLIENT_ID, name: state.userName, lastActive: serverTimestamp() }, { merge: true });
-
-    if (presenceInterval) clearInterval(presenceInterval);
-    presenceInterval = setInterval(() => {
-      setDoc(presenceDocRef, { name: state.userName, lastActive: serverTimestamp() }, { merge: true });
-    }, 15000);
-
-    unsubPresence = onSnapshot(presenceCol, (snap) => {
-      state.online = snap.docs.map(d => d.data())
-        .sort((a,b) => (a.name||'').localeCompare(b.name||''));
-      renderSidePresence();
-    });
-  } catch (err) {
-    console.error('Join/presence error:', err);
-    alert('Could not join the room. Check Firestore rules in the Firebase console.');
-  }
-
-  render();
-  window.addEventListener('beforeunload', cleanupPresence, { once: true });
-}
+      async function joinRoom(){
+        state.userName=(nameInput.value||'').trim()||'Guest';
+        const nextRoom=sanitizeRoomName(roomInput.value)||'default';
+        if(state.room===nextRoom && fbReady) return;
+        await leaveRoom(false);
+        state.room=nextRoom; loadLocal(state.room); roomLabel.textContent=`Room: ${state.room}`; if(!rooms.includes(state.room)){ rooms.unshift(state.room); saveRooms(); }
+        if(!fbReady){ liveBadge.textContent=`Local room: ${state.room} (no sync)`; render(); return; }
+        const { collection, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp, query, orderBy } = window.__fb;
+        const eventsCol=collection(db,'rooms',state.room,'events');
+        unsubEvents = onSnapshot(query(eventsCol, orderBy('date'), orderBy('start')),(snap)=>{ state.events=snap.docs.map(d=>({ id:d.id, ...d.data() })); render(); });
+        const presenceCol=collection(db,'rooms',state.room,'presence');
+        presenceDocRef = doc(presenceCol, CLIENT_ID);
+        await setDoc(presenceDocRef, { id:CLIENT_ID, name:state.userName, lastActive: serverTimestamp() }, { merge:true });
+        if(presenceInterval) clearInterval(presenceInterval);
+        presenceInterval = setInterval(()=>{ setDoc(presenceDocRef, { name: state.userName, lastActive: serverTimestamp() }, { merge:true }); }, 15000);
+        unsubPresence = onSnapshot(presenceCol,(snap)=>{ state.online = snap.docs.map(d=>d.data()).sort((a,b)=> (a.name||'').localeCompare(b.name||'')); renderSidePresence(); });
+        render();
+        window.addEventListener('beforeunload', cleanupPresence, { once:true });
+      }
 
       async function leaveRoom(resetInputs=true){ if(unsubEvents){unsubEvents();unsubEvents=null;} if(unsubPresence){unsubPresence();unsubPresence=null;} if(presenceInterval){clearInterval(presenceInterval);presenceInterval=null;} await cleanupPresence(); if(resetInputs){ roomInput.value=''; } presenceCountEl.textContent='0'; sideCount.textContent='0'; rosterEl.innerHTML=''; sidePresence.innerHTML=''; liveBadge.textContent = FIREBASE_CONFIG? 'Live ready' : 'Local only'; }
       async function cleanupPresence(){ try{ if(presenceDocRef && fbReady){ const { deleteDoc } = window.__fb; await deleteDoc(presenceDocRef); } }catch{} finally{ presenceDocRef=null; } }
