@@ -3,6 +3,1050 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shared Calendar — Rooms, Presence, Availability & Reviews</title>
+  <meta name="description" content="Single-file shared calendar with rooms, presence, per-user availability, and activity reviews." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://www.gstatic.com; connect-src 'self' https://firestore.googleapis.com; object-src 'none'; base-uri 'none'">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0b0d12; --panel:#0f131a; --panel-2:#11141b; --text:#e9edf1; --muted:#a7b0bb; --brand:#6aa7ff; --brand2:#7ef0d3; --radius:16px; --ring:0 0 0 3px rgba(106,167,255,.35); --shadow:0 10px 30px rgba(0,0,0,.35); --shadow-sm:0 4px 14px rgba(0,0,0,.25); --grid: clamp(14px, 2.4vw, 22px); --maxw:1200px; --cell-bg:#0d121c; --cell-border:#293043; --cell-hover:#162034; --danger:#ff6565; }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text)}
+    a{color:var(--text); text-decoration:none}
+    .container{max-width:var(--maxw); margin-inline:auto; padding:0 var(--grid)}
+    header{position:sticky; top:0; z-index:30; backdrop-filter:blur(10px); background:linear-gradient(180deg, rgba(11,13,18,.78), rgba(11,13,18,.45)); border-bottom:1px solid rgba(255,255,255,.06)}
+    .nav{display:flex; align-items:center; justify-content:space-between; gap:10px; padding-block:10px}
+    .logo{display:flex; align-items:center; gap:10px; font-weight:800}
+    .logo-mark{height:28px; width:28px; border-radius:8px; background:conic-gradient(from 220deg, var(--brand), var(--brand2)); box-shadow:0 0 30px rgba(106,167,255,.35)}
+    .controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+    .btn{display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:9999px; border:1px solid #2a2f39; background:#0f131a; color:var(--text); font-weight:600; cursor:pointer}
+    .btn.small{padding:6px 10px; font-size:12px}
+    .btn.icon{padding:6px 10px}
+    .btn.primary{background:linear-gradient(135deg, var(--brand), var(--brand2)); color:#0b0d12; border-color:transparent}
+    .btn:focus{outline:none; box-shadow:var(--ring)}
+    .btn[disabled]{opacity:.6; cursor:not-allowed}
+    .badge{padding:6px 10px; border-radius:999px; background:#141927; border:1px solid #2a2f39; color:var(--muted); font-weight:600}
+    .pill-input{display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #2a2f39; border-radius:999px; background:#0f131a}
+    .pill-input input{background:transparent; border:none; color:var(--text); outline:none; min-width:120px}
+    .pill-input .label{color:var(--muted); font-size:12px}
+
+    /* ===== Toast indicator ===== */
+    .toast{position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); background:#0f131a; border:1px solid #2a2f39; color:#e9edf1; padding:10px 14px; border-radius:999px; box-shadow:var(--shadow-sm); opacity:0; transition:.25s ease; z-index:60; pointer-events:none}
+    .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+    .toast .dot{width:8px;height:8px;border-radius:999px;display:inline-block;margin-right:8px;background:var(--brand)}
+
+    /* ===== Flip container (calendar front / spinner back) ===== */
+    .flip-wrap{ perspective:1500px; }
+    .flip-card{ position:relative; transition:transform .7s cubic-bezier(.2,.7,.2,1); transform-style:preserve-3d; }
+    .flip-card.flipped{ transform:rotateY(180deg); }
+    .face{ backface-visibility:hidden; }
+    .back{ position:absolute; inset:0; transform:rotateY(180deg); }
+
+    .main-grid{display:grid; grid-template-columns: 1fr 320px; gap:16px; align-items:start;}
+    @media (max-width: 980px){ .main-grid{ grid-template-columns: 1fr; } }
+
+    .calendar{background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.08); border-radius:var(--radius); box-shadow:var(--shadow-sm); overflow:hidden}
+    .cal-head{display:flex; flex-direction:column; gap:8px; padding:12px}
+    .cal-nav{display:flex; align-items:center; justify-content:center; gap:8px}
+    .cal-nav #monthLabel{min-width:220px; text-align:center; font-weight:800}
+    .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); border-top:1px solid rgba(255,255,255,.08)}
+    .dow{padding:10px; text-align:center; color:var(--muted); font-weight:600; border-right:1px solid rgba(255,255,255,.06); background:#11141b}
+    .dow:last-child{border-right:0}
+    .cell{min-height:110px; border-top:1px solid var(--cell-border); border-right:1px solid var(--cell-border); padding:8px; position:relative; background:var(--cell-bg); transition:background .12s ease; cursor:pointer}
+    .cell:hover{background:#162034}
+    .cell:last-child{border-right:0}
+    .daynum{font-size:12px; color:var(--muted)}
+    .today .daynum{color:#fff; font-weight:800}
+    .other-month{opacity:.55}
+
+    .event{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px; padding:6px 8px; border-radius:10px; background:#1a2030; border:1px solid rgba(255,255,255,.12); font-size:12px; line-height:1.3; cursor:pointer}
+    .event small{color:var(--muted)}
+    .event .label{display:flex; flex-direction:column}
+    .event .actions{display:flex; gap:6px}
+    .event.cancelled{opacity:.6; text-decoration:line-through}
+    .chip{font-size:11px; padding:2px 6px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:#111728}
+    .event .mini-btn{border:none; background:#0f131a; border:1px solid #2a2f39; border-radius:8px; padding:2px 6px; cursor:pointer; color:var(--text)}
+    .event .mini-btn:focus{outline:none; box-shadow:var(--ring)}
+
+    .avail-dots{position:absolute; top:6px; right:6px; display:flex; gap:6px; flex-wrap:wrap; width:96px; justify-content:flex-end}
+
+    /* availability pie badge per user — bigger + user-color outline for clarity */
+    .pie{ width:16px; height:16px; border-radius:50%; border:1px solid rgba(255,255,255,.25); box-shadow:0 0 6px rgba(0,0,0,.5); background:#0c1220; position:relative }
+    .pie[data-mode="full"]{ background:conic-gradient(#66f28f 0 360deg); }
+    .pie[data-mode="am"]{ background:conic-gradient(#66f28f 0 180deg, transparent 180deg); }
+    .pie[data-mode="pm"]{ background:conic-gradient(transparent 0 180deg, #66f28f 180deg 360deg); }
+    .pie[data-mode="q1"]{ background:conic-gradient(#66f28f 0 90deg, transparent 90deg); }
+    .pie[data-mode="q2"]{ background:conic-gradient(transparent 0 90deg, #66f28f 90deg 180deg, transparent 180deg); }
+    .pie[data-mode="q3"]{ background:conic-gradient(transparent 0 180deg, #66f28f 180deg 270deg, transparent 270deg); }
+    .pie[data-mode="q4"]{ background:conic-gradient(transparent 0 270deg, #66f28f 270deg 360deg); }
+
+    /* Legend + helper for availability */
+    .avail-legend{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; color:var(--muted); font-size:12px}
+    .avail-legend .item{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#111727; border:1px solid rgba(255,255,255,.08)}
+    .avail-legend .s{
+      position:relative;
+      width:16px; height:16px;
+      border-radius:50%;
+      border:1px solid rgba(255,255,255,.25);
+      background:#0f131a;
+      box-shadow:inset 0 0 0 2px rgba(255,255,255,.06);
+    }
+    /* the green “availability” fill (set per item inline, same as before) */
+    /* black pointer */
+    .avail-legend .s::after{
+      content:"";
+      position:absolute; left:50%; top:50%;
+      width:2px; height:8px;          /* pointer length */
+      background:#000;                 /* <— the pointer color */
+      transform:translate(-50%,-100%); /* points upward (12 o’clock) */
+      border-radius:2px;
+      box-shadow:0 0 0 1px rgba(255,255,255,.08) inset;
+    }
+    /* tiny center “hub” */
+    .avail-legend .s::before{
+      content:"";
+      position:absolute; left:50%; top:50%;
+      width:4px; height:4px; border-radius:50%;
+      background:#000; transform:translate(-50%,-50%);
+    }
+    .avail-legend{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; color:var(--muted); font-size:12px}
+    .avail-legend .item{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:#111727; border:1px solid rgba(255,255,255,.08)}
+    .avail-legend .s{width:14px; height:14px; border-radius:50%; background:conic-gradient(#66f28f 0 360deg); border:1px solid rgba(255,255,255,.25)}
+
+    dialog form .row{display:flex; gap:10px; align-items:center; margin-bottom:10px}
+    input, textarea{width:100%; background:#0f131a; border:1px solid #2a2f39; color:var(--text); padding:10px; border-radius:10px}
+    label{color:var(--muted); font-size:13px}
+    #conflictMsg{color:#ffb4b4}
+
+    .popover{position:relative}
+    .popover-panel{position:absolute; right:0; top:calc(100% + 8px); min-width:260px; background:#0f131a; border:1px solid #2a2f39; border-radius:14px; box-shadow:var(--shadow); padding:10px; display:none}
+    .popover.open .popover-panel{display:block}
+
+    .roster{display:flex; flex-direction:column; gap:6px; max-height:260px; overflow:auto}
+    .roster .row{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; background:#111727; border:1px solid rgba(255,255,255,.06); border-radius:10px}
+    .dot{width:8px; height:8px; border-radius:999px; background:#66f28f; box-shadow:0 0 8px rgba(102,242,143,.7)}
+    .muted{color:var(--muted)}
+    .rooms-popover{position:relative}
+    .rooms-panel{position:absolute; right:0; top:calc(100% + 8px); min-width:280px; background:#0f131a; border:1px solid #2a2f39; border-radius:14px; box-shadow:var(--shadow); padding:10px; display:none}
+    .rooms-popover.open .rooms-panel{display:block}
+    .rooms-list{display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto}
+    .rooms-list .room-item{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:10px; background:#111727; border:1px solid rgba(255,255,255,.06); cursor:pointer}
+    .rooms-list .room-name{font-weight:700}
+    .rooms-actions{display:flex; gap:6px}
+    .rooms-panel .row{display:flex; gap:8px; margin-top:8px}
+
+    aside#side{position:sticky; top:86px;}
+    .side-card{background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.08); border-radius:16px; box-shadow:var(--shadow-sm); padding:12px; margin-bottom:16px}
+    .side-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
+    .pill{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:#111727; border:1px solid rgba(255,255,255,.08); font-size:12px}
+    .user-list{display:flex; flex-direction:column; gap:8px}
+    .user-row{display:flex; align-items:center; gap:10px; padding:8px; border-radius:10px; background:#0f131a; border:1px solid #2a2f39}
+    .swatch{width:16px; height:16px; border-radius:50%; box-shadow:inset 0 0 0 2px rgba(255,255,255,.15)}
+    .user-row .actions{margin-left:auto; display:flex; gap:6px}
+    .tiny{font-size:12px; color:var(--muted)}
+    .stars{font-size:12px; letter-spacing:.5px}
+
+    /* ===== Spinner back face ===== */
+    .spinner-wrap{display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:20px}
+    .wheel{ width:360px; height:360px; border-radius:50%; border:2px dashed #2a2f39; position:relative; display:grid; place-items:center; overflow:hidden; box-shadow:var(--shadow-sm); background:#0f131a }
+    .wheel .slice{ position:absolute; inset:0; clip-path:polygon(50% 50%, 100% 0, 100% 100%); transform-origin:center; display:flex; align-items:center; justify-content:center; padding:40px; text-align:center; font-weight:700; color:#e9edf1; opacity:.9 }
+    .wheel .slice:nth-child(odd){ background:#111a2a }
+    .wheel .slice:nth-child(even){ background:#152036 }
+    .needle{ position:absolute; top:-14px; width:0; height:0; border-left:10px solid transparent; border-right:10px solid transparent; border-bottom:14px solid var(--brand); filter:drop-shadow(0 2px 6px rgba(0,0,0,.4)); }
+    .spin-btn{ margin-top:18px }
+    .winner{ margin-top:10px; font-weight:800 }
+  </style>
+</head>
+<body>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<header>
+  <div class="container nav">
+    <a class="logo" href="#" title="Shared Calendar">
+      <span class="logo-mark" aria-hidden="true"></span>
+      <span>Shared Calendar</span>
+    </a>
+    <div class="controls" style="flex:1; justify-content:flex-end">
+      <span id="liveBadge" class="badge">Local only</span>
+      <div class="pill-input" title="Your display name">
+        <span class="label">You</span>
+        <input id="displayName" placeholder="e.g., Alex" />
+      </div>
+      <div class="pill-input" title="Room name (everyone joins the same name)">
+        <span class="label">Room</span>
+        <input id="roomInput" placeholder="e.g., movie-night" />
+      </div>
+      <button class="btn" id="btnJoin">Join</button>
+
+      <div class="rooms-popover" id="roomsPopover">
+        <button class="btn" id="btnRooms">Rooms ▾</button>
+        <div class="rooms-panel">
+          <div class="muted" style="margin-bottom:6px">Switch or create a room</div>
+          <div class="rooms-list" id="roomsList"></div>
+          <div class="row">
+            <input id="newRoomInput" placeholder="new-room-name" />
+            <button class="btn" id="btnCreateRoom" style="padding:8px 12px">Create & Join</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="popover" id="presencePopover">
+        <button class="btn" id="btnPresence"><span id="presenceCount">0</span> online ▾</button>
+        <div class="popover-panel">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px">
+            <div class="muted" id="roomLabel">Room: —</div>
+            <button class="btn" id="btnLeave" style="padding:6px 10px">Leave</button>
+          </div>
+          <div class="roster" id="roster"></div>
+        </div>
+      </div>
+
+      <button class="btn primary" id="btnAdd">＋ Add activity</button>
+      <button class="btn" id="btnToggleAvail" title="Toggle availability editing">Toggle Availability</button>
+      <button class="btn" id="btnFlip" title="Flip to spinner">Flip ▶</button>
+    </div>
+  </div>
+</header>
+
+<main class="container main-grid">
+  <!-- FLIP CONTAINER -->
+  <section class="flip-wrap">
+    <div id="flipCard" class="flip-card" style="min-height:720px">
+
+      <!-- FRONT: CALENDAR -->
+      <div class="face calendar">
+        <div class="cal-head">
+          <div class="cal-nav">
+            <button class="btn icon" id="btnPrev" aria-label="Previous month">◀</button>
+            <div id="monthLabel"></div>
+            <button class="btn icon" id="btnNext" aria-label="Next month">▶</button>
+          </div>
+          <div class="sub" style="text-align:center">
+            Choose or <b>create a room</b>, click <b>Join</b>. Use the sidebar to manage <b>people</b>;
+            select who you're acting as, then click a date to cycle availability (full / halves / quarters).
+            Colored pies in each day show who's available and when.
+          </div>
+         <div class="avail-legend" aria-hidden="true">
+  <span class="item"><span class="s" style="background:conic-gradient(#66f28f 0 360deg)"></span>00–24</span>
+  <span class="item"><span class="s" style="background:conic-gradient(#66f28f 0 180deg, transparent 180deg)"></span>00–12</span>
+  <span class="item"><span class="s" style="background:conic-gradient(transparent 0 180deg, #66f28f 180deg 360deg)"></span>12–24</span>
+  <span class="item"><span class="s" style="background:conic-gradient(#66f28f 0 90deg, transparent 90deg)"></span>00–06</span>
+  <span class="item"><span class="s" style="background:conic-gradient(transparent 0 90deg, #66f28f 90deg 180deg, transparent 180deg)"></span>06–12</span>
+  <span class="item"><span class="s" style="background:conic-gradient(transparent 0 180deg, #66f28f 180deg 270deg, transparent 270deg)"></span>12–18</span>
+  <span class="item"><span class="s" style="background:conic-gradient(transparent 0 270deg, #66f28f 270deg 360deg)"></span>18–24</span>
+</div>
+        </div>
+        <div class="cal-grid" id="dow"></div>
+        <div class="cal-grid" id="grid"></div>
+      </div>
+
+      <!-- BACK: RANDOM ACTIVITY SPINNER -->
+      <div class="face back calendar">
+        <div class="spinner-wrap">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px">
+            <strong>Random activity generator</strong>
+            <span class="tiny">Most common for young adults & uni students</span>
+          </div>
+          <div class="wheel" id="wheel">
+            <div class="needle"></div>
+          </div>
+          <button class="btn primary spin-btn" id="btnSpin">Spin</button>
+          <div style="display:flex; gap:8px; margin-top:10px">
+            <button class="btn" id="btnAddFromSpin" disabled title="Spin first to pick">Add to calendar</button>
+            <button class="btn" id="btnCustomizeSpin">Customize list</button>
+          </div>
+          <div class="winner" id="winner"></div>
+          <div class="tiny" style="margin-top:6px">Flip back to add the picked activity to your calendar.</div>
+          <dialog id="customSpinDialog">
+            <form method="dialog" style="padding:16px; display:grid; gap:10px; min-width:320px">
+              <h3 style="margin:0">Customize spinner</h3>
+              <div class="tiny">One activity per line</div>
+              <textarea id="spinList" rows="8" placeholder="Movie night
+Board games
+…"></textarea>
+              <div style="display:flex; gap:8px; justify-content:flex-end">
+                <button class="btn" value="cancel">Cancel</button>
+                <button class="btn primary" id="btnSaveSpin" value="save">Save</button>
+              </div>
+            </form>
+          </dialog>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <aside id="side">
+    <div class="side-card">
+      <div class="side-head">
+        <strong>People in room</strong>
+        <span class="pill"><span class="dot"></span> <span id="sideCount">0</span></span>
+      </div>
+      <div id="sidePresence" class="user-list"></div>
+      <div id="sideHint" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="side-card">
+      <div class="side-head"><strong>Friends & availability</strong> <span class="tiny">Acting as: <b id="actingAs">—</b></span></div>
+      <div class="user-list" id="usersList"></div>
+      <div class="row" style="margin-top:10px; display:flex; gap:8px">
+        <input id="newUserName" placeholder="Add name (e.g., Sam)" />
+        <button class="btn small" id="btnAddUser">Add</button>
+      </div>
+    </div>
+
+    <div class="side-card">
+      <div class="side-head">
+        <strong>Quick edit selection</strong>
+        <span class="tiny" id="quickEditTarget">No activity selected</span>
+      </div>
+      <div class="user-list">
+        <div class="row" style="display:flex; flex-direction:column; gap:10px">
+          <label>Rating</label>
+          <input id="quickRating" type="range" min="0" max="5" step="1" value="0" />
+          <div class="stars" id="quickStars">☆☆☆☆☆</div>
+          <label>Price</label>
+          <input id="quickPrice" type="number" min="0" step="1" placeholder="0" />
+          <div class="tiny">Shown next to rating on cards</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <button class="btn small" id="quickApply">Apply</button>
+            <button class="btn small" id="quickDelete" title="Delete selected activity">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-card">
+      <div class="side-head">
+        <strong>Top reviewed</strong>
+        <span class="tiny">Best recent activities</span>
+      </div>
+      <div id="topReviewed" class="user-list"></div>
+    </div>
+  </aside>
+</main>
+
+<dialog id="eventDialog">
+  <form method="dialog" id="eventForm">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 16px 0">
+      <h3 style="margin:0">Activity</h3>
+      <button class="btn" value="cancel" type="submit" formmethod="dialog">✕</button>
+    </div>
+    <div style="padding:16px; display:grid; gap:10px">
+      <input type="hidden" id="evtId" />
+      <div class="row"><label style="min-width:88px">Title</label><input id="evtTitle" type="text" placeholder="Movie night" /></div>
+      <div class="row"><label style="min-width:88px">Date</label><input id="evtDate" type="date" /></div>
+      <div class="row"><label style="min-width:88px">From</label><input id="evtStart" type="time" value="18:00" /><label>To</label><input id="evtEnd" type="time" value="20:00" /></div>
+      <div class="row"><label style="min-width:88px">People</label><input id="evtPeople" type="text" placeholder="anna, omar, li" /></div>
+      <div class="row"><label style="min-width:88px">Notes</label><textarea id="evtNotes" rows="2" placeholder="Bring snacks"></textarea></div>
+
+      <div class="row">
+        <label style="min-width:88px">Done</label>
+        <input id="evtDone" type="checkbox" style="width:auto" />
+        <label>Rating</label>
+        <input id="evtRating" type="range" min="0" max="5" step="1" value="0" style="width:160px" />
+        <span id="evtRatingLabel" class="stars">☆☆☆☆☆</span>
+      </div>
+      <div class="row">
+        <label style="min-width:88px">Price</label>
+        <input id="evtPrice" type="number" min="0" step="1" placeholder="0" />
+        <span class="tiny">e.g., NOK</span>
+      </div>
+
+      <div class="row"><label style="min-width:88px">Status</label><span class="chip" id="evtStatusChip">Planned</span></div>
+      <div class="row"><button class="btn primary" id="btnSave" value="save" type="submit">Save</button><button class="btn" id="btnDelete" type="button">Delete</button></div>
+      <div class="muted" id="conflictMsg"></div>
+    </div>
+  </form>
+</dialog>
+<script type="module">
+const __SC_KEY__='__SC_SINGLETON__';
+try{ if(window[__SC_KEY__]?.teardown) window[__SC_KEY__].teardown(); }catch{}
+window[__SC_KEY__] = { teardown:null };
+
+(function(){
+'use strict';
+const SINGLETON = window[__SC_KEY__];
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAKdrW--5amKlOZIZaBrhiZYnsw3xByFP4",
+  authDomain: "calend-2aabe.firebaseapp.com",
+  projectId: "calend-2aabe",
+  storageBucket: "calend-2aabe.appspot.com",
+  messagingSenderId: "70040581273",
+  appId: "1:70040581273:web:c6852a7f467be95a457408",
+  measurementId: "G-QLT6G2B5WQ"
+};
+
+const CLIENT_ID = `c_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
+const $ = (s,r=document)=>r.querySelector(s);
+const pad=(n)=>String(n).padStart(2,'0');
+const toKey=(d)=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+const gridEl=$('#grid'), dowEl=$('#dow'), monthLabel=$('#monthLabel');
+const liveBadge=$('#liveBadge');
+const presenceCountEl=$('#presenceCount');
+const sideCount=$('#sideCount');
+const sidePresence=$('#sidePresence');
+const sideHint=$('#sideHint');
+const actingAsEl=$('#actingAs');
+const topReviewedEl=$('#topReviewed');
+const presencePopover=$('#presencePopover');
+const btnPresence=$('#btnPresence');
+const btnLeave=$('#btnLeave');
+const roomLabel=$('#roomLabel');
+const flipCard=$('#flipCard');
+const btnFlip=$('#btnFlip');
+const toast=$('#toast');
+
+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>{
+  const div=document.createElement('div'); div.className='dow'; div.textContent=d; dowEl.appendChild(div);
+});
+
+const storageKeyFor=(room)=>`shared-calendar-${room||'local'}-v5`; // v5: availability polish + enter handlers + toast
+const ROOMS_KEY='shared-calendar-rooms-v2';
+const SELF_ID_KEY='shared-calendar-self-id';
+
+let state={
+  room:'',
+  userName:localStorage.getItem('displayName')||'',
+  today:new Date(),
+  cursor:new Date(new Date().getFullYear(), new Date().getMonth(),1),
+  events:[],
+  users:[],
+  currentUserId:'',
+  // availability value per user per day: one of '', 'full','am','pm','q1','q2','q3','q4'
+  availability:{},
+  online:[],
+  selectedEventId:'',
+  lastDateKey:''
+};
+
+let rooms=loadRooms();
+let presenceInterval=null;
+
+const nameInput=$('#displayName');
+const roomInput=$('#roomInput');
+const btnJoin=$('#btnJoin');
+const roomsPopover=$('#roomsPopover');
+const btnRooms=$('#btnRooms');
+const roomsList=$('#roomsList');
+const newRoomInput=$('#newRoomInput');
+const btnCreateRoom=$('#btnCreateRoom');
+const usersList=$('#usersList');
+const newUserName=$('#newUserName');
+const btnAddUser=$('#btnAddUser');
+
+// quick edit controls
+const quickRating=$('#quickRating');
+const quickStars=$('#quickStars');
+const quickPrice=$('#quickPrice');
+const quickApply=$('#quickApply');
+const quickEditTarget=$('#quickEditTarget');
+
+nameInput.value=state.userName;
+
+const PALETTE=['#7ef0d3','#6aa7ff','#ffb86b','#f78fb3','#ffd166','#9aedfe','#c792ea','#7bd88f','#ecc48d','#ff8ba7'];
+
+function genId(prefix='e'){ return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`; }
+
+/* ---------- “You” ⇄ Friends wiring + presence name ---------- */
+function getSelfId(){
+  let id=localStorage.getItem(SELF_ID_KEY);
+  if(!id){ id=genId('u'); localStorage.setItem(SELF_ID_KEY, id); }
+  return id;
+}
+function syncSelfUser(setAsCurrent=true){
+  const id=getSelfId();
+  const name=(nameInput.value||'').trim()||'Guest';
+  let u=state.users.find(x=>x.id===id);
+  if(!u){
+    const color=PALETTE[0];
+    u={ id, name, color };
+    state.users.unshift(u);
+  } else {
+    u.name=name;
+  }
+  state.userName=name;
+  if(setAsCurrent) state.currentUserId=id;
+  if(fbReady && state.room){
+    const { collection, doc, setDoc } = window.__fb;
+    const col = collection(db, 'rooms', state.room, 'people');
+    setDoc(doc(col, u.id), u, { merge:true }).catch(()=>{});
+  }
+  saveLocal();
+  renderUsersList();
+  renderSidePresence();
+}
+nameInput.addEventListener('focus', ()=> syncSelfUser(true));
+nameInput.addEventListener('input', ()=>{
+  syncSelfUser(false);
+  try{
+    if(fbReady && presenceDocRef){
+      const { setDoc, serverTimestamp } = window.__fb;
+      setDoc(presenceDocRef, { name: (nameInput.value||'').trim()||'Guest', lastActive: serverTimestamp() }, { merge:true }).catch(()=>{});
+    }
+  }catch{}
+});
+
+/* ---------- Tiny helpers ---------- */
+function showToast(msg){ if(!toast) return; toast.innerHTML=`<span class="dot"></span>${msg}`; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1500); }
+function stars(n){ const k=Math.max(0,Math.min(5,Number(n)||0)); return '★★★★★☆☆☆☆☆'.slice(5-k,10-k); }
+function availNext(mode){ const order=['','full','am','pm','q1','q2','q3','q4']; const i=order.indexOf(mode); return order[(i+1)%order.length]; }
+function availHuman(mode){
+  return ({
+    '': 'None',
+    'full': '00–24 (all day)',
+    'am':  '00–12 (morning)',
+    'pm':  '12–24 (afternoon/evening)',
+    'q1':  '00–06 (early morning)',
+    'q2':  '06–12 (late morning)',
+    'q3':  '12–18 (afternoon)',
+    'q4':  '18–24 (evening)',
+  })[mode||''] || 'None';
+}
+let markingAvailability=false;
+$('#btnToggleAvail').onclick=()=>{ 
+  markingAvailability=!markingAvailability; 
+  const msg = markingAvailability ? "Availability mode: ON — click a day to cycle" : "Availability mode: OFF — click a day to add/edit";
+  alert(msg);
+};
+
+/* ---------- Render ---------- */
+function render(){
+  monthLabel.textContent=state.cursor.toLocaleString(undefined,{month:'long',year:'numeric'});
+  gridEl.innerHTML='';
+  const first=new Date(state.cursor.getFullYear(),state.cursor.getMonth(),1);
+  const start=new Date(first);
+  let day=(first.getDay()+6)%7;
+  start.setDate(first.getDate()-day);
+  for(let i=0;i<42;i++){
+    const d=new Date(start);
+    d.setDate(start.getDate()+i);
+    const k=toKey(d);
+    const cell=document.createElement('div');
+    cell.className='cell';
+    if(d.getMonth()!==state.cursor.getMonth()) cell.classList.add('other-month');
+    if(k===toKey(state.today)) cell.classList.add('today');
+    const num=document.createElement('div'); num.className='daynum'; num.textContent=String(d.getDate()); cell.appendChild(num);
+
+    // Availability pies
+    const dots=document.createElement('div'); dots.className='avail-dots';
+    const byDay = state.availability[k] || {};
+    Object.keys(byDay).forEach(uid=>{
+      const mode = byDay[uid];
+      if(!mode) return;
+      const u = state.users.find(x=>x.id===uid);
+      if(!u) return;
+      const dot=document.createElement('div'); dot.className='pie'; dot.dataset.mode=mode;
+      dot.title=`${(u.name||'User')}: ${availHuman(mode)}`;
+      // clearer: user color ring
+      dot.style.boxShadow = `0 0 0 2px ${u.color}, 0 0 6px rgba(0,0,0,.6)`;
+      dots.appendChild(dot);
+    });
+    if(dots.children.length) cell.appendChild(dots);
+
+    // Events list
+    const todays=state.events.filter(ev=>ev.date===k).sort((a,b)=>(a.start||'00:00').localeCompare(b.start||'00:00'));
+    todays.forEach(ev=>{
+      const el=document.createElement('div'); el.className='event'+(ev.cancelled?' cancelled':''); el.title='Click to edit';
+      const label=document.createElement('div'); label.className='label';
+      const title=document.createElement('div'); title.textContent=ev.title||'(Untitled)';
+      const sub=document.createElement('small');
+      const t1=ev.start||''; const t2=ev.end||'';
+      const tspan = [ t1&&t2?`${t1}–${t2}`:t1||t2, (ev.people&&ev.people.length?` · ${ev.people.join(', ')}`:'') ].filter(Boolean).join('');
+      const priceStr = (ev.price||ev.price===0) ? ` · ${formatPrice(ev.price)}` : '';
+      const rateStr = ev.rating?` · ★${ev.rating}`:'';
+      sub.textContent = tspan + rateStr + priceStr;
+      label.appendChild(title); label.appendChild(sub);
+      const actions=document.createElement('div'); actions.className='actions';
+      const rateBtn=document.createElement('button'); rateBtn.className='mini-btn'; rateBtn.textContent='★'; rateBtn.title='Quick edit rating & price';
+      rateBtn.addEventListener('click',(e)=>{ e.stopPropagation(); state.selectedEventId=ev.id; refreshQuickEdit(); try{ document.querySelector('#quickRating')?.focus({preventScroll:false}); }catch{} document.querySelector('#side')?.scrollIntoView({ behavior:'smooth', block:'nearest' }); });
+      const cancelBtn=document.createElement('button'); cancelBtn.className='mini-btn'; cancelBtn.textContent=ev.cancelled?'↺':'✕'; cancelBtn.title=ev.cancelled?'Uncancel':'Cancel';
+      cancelBtn.addEventListener('click',(e)=>{ e.stopPropagation(); ev.cancelled=!ev.cancelled; saveEvent(ev); });
+      const delBtn=document.createElement('button'); delBtn.className='mini-btn'; delBtn.textContent='🗑'; delBtn.title='Delete activity';
+      delBtn.addEventListener('click', async (e)=>{ e.stopPropagation(); if(confirm('Delete this activity?')) await deleteEventById(ev.id); });
+      actions.appendChild(rateBtn); actions.appendChild(cancelBtn); actions.appendChild(delBtn);
+      el.appendChild(label); el.appendChild(actions);
+      el.addEventListener('click',()=>{ state.selectedEventId=ev.id; state.lastDateKey=ev.date||state.lastDateKey; openDialog(ev); refreshQuickEdit(); });
+      cell.appendChild(el);
+    });
+
+    cell.addEventListener('click',()=>{
+      state.lastDateKey=k;
+      if(markingAvailability){
+        if(!state.currentUserId){ alert('Pick a person in the sidebar first.'); return; }
+        const dayMap = state.availability[k] || (state.availability[k]={});
+        const current = dayMap[state.currentUserId] || '';
+        const next = availNext(current);
+        dayMap[state.currentUserId] = next;
+        if(fbReady && state.room){
+          const { collection, doc, setDoc } = window.__fb;
+          const col = collection(db, 'rooms', state.room, 'availability');
+          setDoc(doc(col, k), { [state.currentUserId]: next }, { merge:true }).catch(()=>{});
+        }
+        saveLocal(); render(); // immediate refresh without month hop
+      }else{
+        const ev = {date:k,start:'18:00',end:'20:00'}; state.selectedEventId=''; openDialog(ev); refreshQuickEdit();
+      }
+    });
+    gridEl.appendChild(cell);
+  }
+  roomLabel.textContent=`Room: ${state.room||'—'}`;
+  renderUsersList();
+  renderTopReviewed();
+  saveLocal();
+  renderSidePresence();
+}
+
+/* ---------- Dialog wiring ---------- */
+const dlg=$('#eventDialog');
+const form=$('#eventForm');
+const idEl=$('#evtId'), titleEl=$('#evtTitle'), dateEl=$('#evtDate'), sEl=$('#evtStart'), eEl=$('#evtEnd'), pEl=$('#evtPeople'), nEl=$('#evtNotes');
+const statusChip=$('#evtStatusChip');
+const doneEl=$('#evtDone'), ratingEl=$('#evtRating'), ratingLbl=$('#evtRatingLabel');
+const priceEl=$('#evtPrice');
+function updateRatingLabel(){ ratingLbl.textContent = stars(ratingEl.value); }
+ratingEl.addEventListener('input', updateRatingLabel);
+
+// Let Enter submit the event (except inside textarea)
+form.addEventListener('keydown', (e)=>{
+  if(e.key==='Enter' && e.target.tagName!=='TEXTAREA'){
+    e.preventDefault();
+    $('#btnSave')?.click();
+  }
+});
+
+function openDialog(evt){
+  idEl.value=evt.id||'';
+  titleEl.value=evt.title||'';
+  // default to last clicked date or today
+  const defDate = state.lastDateKey || toKey(new Date());
+  dateEl.value=evt.date||defDate;
+  sEl.value=evt.start||'18:00';
+  eEl.value=evt.end||'20:00';
+  pEl.value=(evt.people||[]).join(', ');
+  nEl.value=evt.notes||'';
+  doneEl.checked=!!evt.done;
+  ratingEl.value=String(evt.rating||0); updateRatingLabel();
+  priceEl.value = (evt.price||evt.price===0) ? String(evt.price) : '';
+  setStatusChip(!!evt.cancelled);
+  $('#btnDelete').style.display=evt.id?'inline-flex':'none';
+  dlg.showModal();
+  // Focus title for quick entry
+  try{ titleEl.focus(); }catch{}
+}
+function setStatusChip(c){ statusChip.textContent=c?'Cancelled':'Planned'; statusChip.style.opacity=c?'.8':'1'; }
+
+form.addEventListener('submit',(e)=>{
+  const action=e.submitter&&e.submitter.value; if(action!=='save'){return;}
+  e.preventDefault();
+  const id=idEl.value||genId('e');
+  const evt={
+    id,
+    title:(titleEl.value||'').trim()||'Untitled',
+    date:dateEl.value||toKey(new Date()),
+    start:sEl.value||'',
+    end:eEl.value||'',
+    people:pEl.value? pEl.value.split(',').map(s=>s.trim()).filter(Boolean):[],
+    notes:nEl.value||'',
+    done:!!doneEl.checked,
+    rating: Number(ratingEl.value||0),
+    price: priceEl.value===''? undefined : Number(priceEl.value||0),
+    cancelled:(state.events.find(x=>x.id===id)||{}).cancelled||false
+  };
+  state.selectedEventId=id; // select on save
+  // DO NOT jump months; just re-render in place
+  saveEvent(evt); dlg.close(); refreshQuickEdit();
+});
+$('#btnDelete').onclick=async()=>{ const id=idEl.value; if(!id){ dlg.close(); return;} if(confirm('Delete this activity?')){ await deleteEventById(id); state.selectedEventId=''; dlg.close(); refreshQuickEdit(); } };
+$('#btnPrev').onclick=()=>{ state.cursor=new Date(state.cursor.getFullYear(), state.cursor.getMonth()-1,1); render(); };
+$('#btnNext').onclick=()=>{ state.cursor=new Date(state.cursor.getFullYear(), state.cursor.getMonth()+1,1); render(); };
+$('#btnAdd').onclick=()=>{ const ev={date:state.lastDateKey||toKey(state.today)}; state.selectedEventId=''; openDialog(ev); refreshQuickEdit(); };
+statusChip.onclick=()=>{ const id=idEl.value; if(id){ const idx=state.events.findIndex(x=>x.id===id); if(idx>=0){ state.events[idx].cancelled=!state.events[idx].cancelled; saveEvent(state.events[idx]); } } else { setStatusChip(statusChip.textContent!=='Cancelled'); } };
+
+/* ---------- Flip & spinner ---------- */
+btnFlip.onclick=()=>{ const f=flipCard.classList.toggle('flipped'); btnFlip.textContent = f? 'Flip ◀' : 'Flip ▶'; };
+
+let commonActivities=(()=>{ try{ const raw=localStorage.getItem('spin-activities'); if(raw){ const arr=JSON.parse(raw); if(Array.isArray(arr) && arr.length) return arr; } }catch{} return [
+  'Movie night','Board games','Study group','Gym session','Coffee meetup','Picnic','Hike','Beach day','Karaoke','Cooking together','Museum visit','Bar trivia','Video game tourney','Basketball','Soccer','Library sprint','Potluck','Thrift shopping','Concert','Coding jam'
+]; })();
+
+const wheelEl=$('#wheel'); const winnerEl=$('#winner'); const btnSpin=$('#btnSpin'); const btnAddFromSpin=$('#btnAddFromSpin'); const btnCustomizeSpin=$('#btnCustomizeSpin'); const customSpinDialog=$('#customSpinDialog'); const spinList=$('#spinList'); const btnSaveSpin=$('#btnSaveSpin');
+function buildWheel(){
+  wheelEl.querySelectorAll('.slice').forEach(n=>n.remove());
+  const n=commonActivities.length; const angle=360/n; 
+  commonActivities.forEach((name,i)=>{
+    const s=document.createElement('div'); s.className='slice';
+    s.style.transform=`rotate(${i*angle}deg)`;
+    s.style.clipPath=`polygon(50% 50%, 100% 0, 100% 100%)`;
+    s.innerHTML=`<div style="transform:rotate(90deg)"><span>${name}</span></div>`;
+    wheelEl.appendChild(s);
+  });
+}
+buildWheel();
+
+btnSpin.onclick=()=>{
+  const n=commonActivities.length; const angle=360/n; const idx=Math.floor(Math.random()*n);
+  const turns=6; const targetRot = turns*360 + (idx*angle + angle/2);
+  wheelEl.style.transition='transform 2.6s cubic-bezier(.2,.8,0,1)';
+  wheelEl.style.transform=`rotate(-${targetRot}deg)`;
+  winnerEl.textContent=''; btnAddFromSpin.disabled=true;
+  setTimeout(()=>{ const pick=commonActivities[idx]; winnerEl.textContent=`Picked: ${pick}`; btnAddFromSpin.disabled=false; btnAddFromSpin.dataset.title=pick; }, 2700);
+};
+
+btnAddFromSpin.onclick=()=>{
+  const title = btnAddFromSpin.dataset.title || 'Activity';
+  const date = state.lastDateKey || toKey(state.today);
+  const ev={ title, date, start:'18:00', end:'20:00', rating:0 };
+  state.selectedEventId=''; openDialog(ev);
+};
+
+// Enter to save spinner list
+spinList?.addEventListener('keydown',(e)=>{ if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); btnSaveSpin.click(); }});
+btnCustomizeSpin.onclick=()=>{ spinList.value = commonActivities.join('\n'); customSpinDialog.showModal(); };
+btnSaveSpin.onclick=(e)=>{ e.preventDefault(); const arr = spinList.value.split('\n').map(s=>s.trim()).filter(Boolean); if(arr.length){ commonActivities=arr; localStorage.setItem('spin-activities', JSON.stringify(arr)); buildWheel(); } customSpinDialog.close(); };
+
+/* ---------- Popovers ---------- */
+const presencePopoverEl=$('#presencePopover');
+btnRooms.onclick=()=>{ roomsPopover.classList.toggle('open'); refreshRoomsList(); };
+btnPresence.onclick=()=>{ presencePopoverEl.classList.toggle('open'); };
+if(SINGLETON.docHandler){ document.removeEventListener('click', SINGLETON.docHandler); }
+SINGLETON.docHandler=(e)=>{ if(!presencePopoverEl.contains(e.target) && e.target!==btnPresence) presencePopoverEl.classList.remove('open'); if(!roomsPopover.contains(e.target) && e.target!==btnRooms) roomsPopover.classList.remove('open'); };
+document.addEventListener('click', SINGLETON.docHandler);
+
+// Enter key flows
+roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); joinRoom(); }});
+newRoomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); btnCreateRoom.click(); }});
+newUserName.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); addUserFromInput(); }});
+
+// Buttons
+btnCreateRoom.onclick=()=>{ const nm=sanitizeRoomName(newRoomInput.value); if(!nm) return; if(!rooms.includes(nm)){ rooms.unshift(nm); saveRooms(); } roomInput.value=nm; joinRoom(); newRoomInput.value=''; roomsPopover.classList.remove('open'); };
+btnJoin.onclick=()=> joinRoom();
+btnLeave.onclick=()=> leaveRoom();
+btnAddUser.onclick=addUserFromInput;
+
+function addUserFromInput(){
+  const raw=(newUserName.value||'').trim(); if(!raw) return;
+  if(state.users.some(u=>u.name.toLowerCase()===raw.toLowerCase())){ alert('Name already exists.'); return; }
+  const color=PALETTE[state.users.length % PALETTE.length];
+  const u={ id:genId('u'), name:raw, color };
+  state.users.push(u);
+  state.currentUserId=u.id;
+  if(fbReady && state.room){ const { collection, doc, setDoc } = window.__fb; setDoc(doc(collection(db,'rooms',state.room,'people'), u.id), u, { merge:true }).catch(()=>{}); }
+  newUserName.value='';
+  saveLocal(); render();
+}
+
+function renderUsersList(){
+  usersList.innerHTML='';
+  actingAsEl.textContent = displayNameOf(state.currentUserId) || '—';
+  if(!state.users.length){
+    const d=document.createElement('div'); d.className='muted'; d.textContent='No people yet — add some!'; usersList.appendChild(d); return;
+  }
+  const selfId=getSelfId();
+  state.users.forEach(u=>{
+    const row=document.createElement('div'); row.className='user-row';
+    const sw=document.createElement('div'); sw.className='swatch'; sw.style.background=u.color;
+    const name=document.createElement('div');
+    const youTag = u.id===selfId ? ' <span class="tiny">(You)</span>' : '';
+    name.innerHTML=`<strong>${escapeHtml(u.name)}</strong>${youTag}`;
+    const actions=document.createElement('div'); actions.className='actions';
+    const actBtn=document.createElement('button'); actBtn.className='btn small'; actBtn.textContent = (u.id===state.currentUserId)?'Selected':'Select';
+    actBtn.addEventListener('click',(e)=>{ e.preventDefault(); state.currentUserId=u.id; saveLocal(); renderUsersList(); });
+    const delBtn=document.createElement('button'); delBtn.className='btn small'; delBtn.textContent='Delete';
+    if(u.id===selfId){ delBtn.disabled=true; delBtn.title="Can't delete yourself"; }
+    delBtn.addEventListener('click',(e)=>{ e.preventDefault(); if(u.id===selfId) return; state.users = state.users.filter(x=>x.id!==u.id);
+      Object.keys(state.availability).forEach(k=>{ if(state.availability[k] && state.availability[k][u.id]!==undefined) delete state.availability[k][u.id]; });
+      if(state.currentUserId===u.id) state.currentUserId = state.users[0]?.id || selfId;
+      if(fbReady && state.room){ const { collection, doc, deleteDoc } = window.__fb; deleteDoc(doc(collection(db,'rooms',state.room,'people'), u.id)).catch(()=>{}); }
+      saveLocal(); render(); });
+    actions.appendChild(actBtn); actions.appendChild(delBtn);
+    row.appendChild(sw); row.appendChild(name); row.appendChild(actions);
+    usersList.appendChild(row);
+  });
+}
+
+function renderTopReviewed(){
+  topReviewedEl.innerHTML='';
+  const list = state.events
+    .filter(e=> Number(e.rating)>0 && !e.cancelled)
+    .sort((a,b)=> (b.rating||0)-(a.rating||0) || (b.date||'').localeCompare(a.date||''))
+    .slice(0,5);
+  if(!list.length){
+    const d=document.createElement('div'); d.className='muted'; d.textContent='No reviews yet.'; topReviewedEl.appendChild(d); return;
+  }
+  list.forEach(ev=>{
+    const row=document.createElement('div'); row.className='user-row';
+    row.style.cursor='pointer'; row.title='Click to quick-edit; double-click to open full dialog';
+    const sw=document.createElement('div'); sw.className='swatch'; sw.style.background='#6aa7ff';
+    const label=document.createElement('div');
+    const when = ev.date ? new Date(ev.date).toLocaleDateString() : '';
+    const priceStr = (ev.price||ev.price===0) ? ` · ${formatPrice(ev.price)}` : '';
+    label.innerHTML=`<strong>${escapeHtml(ev.title||'(Untitled)')}</strong><div class="tiny">${when}${priceStr}</div><div class="stars">${stars(ev.rating)}</div>`;
+    row.appendChild(sw); row.appendChild(label);
+    row.addEventListener('click', ()=>{
+      state.selectedEventId = ev.id;
+      refreshQuickEdit();
+      try{ document.querySelector('#quickRating')?.focus({preventScroll:false}); }catch{}
+      document.querySelector('#side')?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    });
+    row.addEventListener('dblclick', ()=>{
+      state.selectedEventId = ev.id;
+      openDialog(ev);
+    });
+    topReviewedEl.appendChild(row);
+  });
+}
+
+function sanitizeRoomName(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9-_]+/g,'-').replace(/^-+|-+$/g,'').slice(0,64); }
+function displayNameOf(uid){ return (state.users.find(u=>u.id===uid)||{}).name || ''; }
+function formatPrice(n){ if(n===undefined||n===null||isNaN(n)) return ''; return `kr ${Number(n).toFixed(0)}`; }
+
+function saveLocal(){
+  const key=storageKeyFor(state.room||'local');
+  const data={cursor:state.cursor, events:state.events, users:state.users, currentUserId:state.currentUserId, availability:state.availability};
+  localStorage.setItem(key, JSON.stringify(data));
+  if(state.userName) localStorage.setItem('displayName', state.userName);
+  if(state.room && !rooms.includes(state.room)){ rooms.unshift(state.room); saveRooms(); }
+  localStorage.setItem('last-room', state.room||'');
+}
+function loadLocal(room){
+  const key=storageKeyFor(room||'local');
+  try{
+    const raw=localStorage.getItem(key); if(!raw) throw 0;
+    const s=JSON.parse(raw);
+    state.cursor=s.cursor?new Date(s.cursor):new Date(new Date().getFullYear(), new Date().getMonth(),1);
+    state.events=Array.isArray(s.events)?s.events:[];
+    state.users=Array.isArray(s.users)?s.users:[];
+    state.currentUserId=s.currentUserId||state.users[0]?.id||'';
+    state.availability=s.availability||{};
+  }catch{
+    state.cursor=new Date(new Date().getFullYear(), new Date().getMonth(),1);
+    state.events=[]; state.users=[]; state.currentUserId=''; state.availability={};
+  }
+}
+function loadRooms(){ try{ const list=JSON.parse(localStorage.getItem(ROOMS_KEY)||'[]'); return Array.isArray(list)? list : []; }catch{ return []; } }
+function saveRooms(){ localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms.slice(0,50))); }
+function refreshRoomsList(){
+  roomsList.innerHTML='';
+  if(!rooms.length){ const p=document.createElement('div'); p.className='muted'; p.textContent='No rooms yet. Create one below.'; roomsList.appendChild(p); return; }
+  rooms.forEach(nm=>{
+    const row=document.createElement('div'); row.className='room-item';
+    const nameSpan=document.createElement('span'); nameSpan.className='room-name'; nameSpan.textContent=nm;
+    const act=document.createElement('div'); act.className='rooms-actions';
+    const joinBtn=document.createElement('button'); joinBtn.className='btn small'; joinBtn.textContent= nm===state.room? 'Open':'Join';
+    const delBtn=document.createElement('button'); delBtn.className='btn small'; delBtn.textContent='Delete';
+    function go(){ roomInput.value=nm; roomsPopover.classList.remove('open'); joinRoom(); }
+    row.addEventListener('click', go);
+    joinBtn.addEventListener('click',(e)=>{ e.stopPropagation(); go(); });
+    delBtn.addEventListener('click',(e)=>{ e.stopPropagation(); rooms=rooms.filter(r=>r!==nm); saveRooms(); refreshRoomsList(); });
+    act.appendChild(joinBtn); act.appendChild(delBtn);
+    row.appendChild(nameSpan); row.appendChild(act); roomsList.appendChild(row);
+  });
+}
+
+/* ---------- Firebase bindings + room flow (more robust) ---------- */
+let app=null, db=null, unsubEvents=null, unsubPresence=null, presenceDocRef=null, unsubAvailability=null, unsubPeople=null;
+let fbReady=false;
+
+async function initFirebase(){
+  if(!FIREBASE_CONFIG){ fbReady=false; return; }
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+  const { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+  app=initializeApp(FIREBASE_CONFIG);
+  db=getFirestore(app);
+  fbReady=true;
+  window.__fb={ collection, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp, query, orderBy };
+  liveBadge.textContent='Live ready (paste config ✓)';
+}
+
+function renderSidePresence(){
+  sidePresence.innerHTML='';
+  const list = state.online;
+  presenceCountEl.textContent = String(list.length);
+  sideCount.textContent = String(list.length);
+  sideHint.textContent = fbReady? '' : 'Presence is local-only until you paste Firebase config.';
+  if(!list.length){ const d=document.createElement('div'); d.className='muted'; d.textContent='No one here yet.'; sidePresence.appendChild(d); return; }
+  list.forEach(u=>{
+    const row=document.createElement('div'); row.className='user-row';
+    const av=document.createElement('div'); av.className='swatch'; av.style.background = hashColor(u.id);
+    const name=document.createElement('div'); name.innerHTML=`<strong>${escapeHtml(u.name||'Guest')}</strong><div class="tiny">${u.id===CLIENT_ID?'You':''}</div>`;
+    row.appendChild(av); row.appendChild(name); sidePresence.appendChild(row);
+  });
+}
+function hashColor(id){ let h=0; for(let i=0;i<id.length;i++){ h=(h*31+id.charCodeAt(i))|0; } const colors=PALETTE; return colors[Math.abs(h)%colors.length]; }
+
+async function joinRoom() {
+  const sanitized = sanitizeRoomName(roomInput.value);
+  if(!sanitized){ alert('Enter a room name (letters, numbers, "-", "_").'); roomInput.focus(); return; }
+
+  state.userName = (nameInput.value || '').trim() || 'Guest';
+  await leaveRoom(false);
+  state.room = sanitized;
+  loadLocal(state.room);
+  syncSelfUser(true);
+
+  roomLabel.textContent = `Room: ${state.room}`;
+  if (!rooms.includes(state.room)) { rooms.unshift(state.room); saveRooms(); }
+
+  if (!fbReady) { 
+    liveBadge.textContent = `Local room: ${state.room} (no sync)`; 
+    render(); 
+    showToast(`Joined room “${state.room}” (local)`); 
+    return; 
+  }
+
+  try {
+    const { collection, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp, query, orderBy } = window.__fb;
+
+    // Events
+    const eventsCol = collection(db, 'rooms', state.room, 'events');
+    unsubEvents = onSnapshot(query(eventsCol, orderBy('date'), orderBy('start')), (snap) => {
+      state.events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      render();
+    });
+
+    // Presence heartbeat
+    const presenceCol = collection(db, 'rooms', state.room, 'presence');
+    presenceDocRef = doc(presenceCol, CLIENT_ID);
+    await setDoc(presenceDocRef, { id: CLIENT_ID, name: state.userName, lastActive: serverTimestamp() }, { merge: true });
+    if (presenceInterval) clearInterval(presenceInterval);
+    presenceInterval = setInterval(() => {
+      setDoc(presenceDocRef, { name: state.userName, lastActive: serverTimestamp() }, { merge: true }).catch(()=>{});
+    }, 15000);
+    unsubPresence = onSnapshot(presenceCol, (snap) => {
+      state.online = snap.docs.map(d => d.data()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      renderSidePresence();
+    });
+
+    // Availability (shared)
+    const availabilityCol = collection(db, 'rooms', state.room, 'availability');
+    unsubAvailability = onSnapshot(availabilityCol, (snap) => {
+      const map={};
+      snap.forEach(s=>{ map[s.id]=s.data(); });
+      state.availability = map;
+      saveLocal(); render();
+    });
+
+    // People (shared)
+    const peopleCol = collection(db, 'rooms', state.room, 'people');
+    unsubPeople = onSnapshot(peopleCol, (snap) => {
+      const shared = snap.docs.map(d=>d.data());
+      const byId=new Map(shared.map(u=>[u.id,u]));
+      const selfId=getSelfId();
+      if(!byId.has(selfId)){ syncSelfUser(true); }
+      state.users = Array.from(byId.values());
+      if(!state.users.find(u=>u.id===state.currentUserId)) state.currentUserId=selfId;
+      saveLocal(); renderUsersList();
+    });
+
+    render();
+    showToast(`Joined room “${state.room}”`);
+  } catch (err) {
+    console.error('Join/presence error:', err);
+    alert('Could not join the room. Check Firestore rules in the Firebase console.');
+  }
+  window.addEventListener('beforeunload', cleanupPresence, { once: true });
+}
+
+async function leaveRoom(resetInputs=true){
+  if(unsubEvents){unsubEvents();unsubEvents=null;}
+  if(unsubPresence){unsubPresence();unsubPresence=null;}
+  if(unsubAvailability){unsubAvailability();unsubAvailability=null;}
+  if(unsubPeople){unsubPeople();unsubPeople=null;}
+  if(presenceInterval){clearInterval(presenceInterval);presenceInterval=null;}
+  await cleanupPresence();
+  if(resetInputs){ roomInput.value=''; }
+  state.online=[];
+  presenceCountEl.textContent='0'; sideCount.textContent='0'; sidePresence.innerHTML='';
+  liveBadge.textContent = FIREBASE_CONFIG? 'Live ready' : 'Local only';
+}
+
+async function cleanupPresence(){ try{ if(presenceDocRef && fbReady){ const { deleteDoc } = window.__fb; await deleteDoc(presenceDocRef); } }catch{} finally{ presenceDocRef=null; } }
+
+async function saveEvent(evt){
+  const idx=state.events.findIndex(x=>x.id===evt.id);
+  if(idx>=0) state.events[idx]=evt; else state.events.push(evt);
+  // Do NOT adjust state.cursor; just render to avoid the “month hop”
+  if(fbReady && state.room){
+    const { collection, doc, setDoc } = window.__fb;
+    const ref=doc(collection(db,'rooms',state.room,'events'), evt.id);
+    await setDoc(ref, evt, { merge:true }).catch(()=>{});
+  }
+  saveLocal(); render();
+}
+async function deleteEventById(id){
+  state.events=state.events.filter(x=>x.id!==id);
+  if(fbReady && state.room){
+    const { collection, doc, deleteDoc } = window.__fb;
+    const ref=doc(collection(db,'rooms',state.room,'events'), id);
+    try{ await deleteDoc(ref);}catch{}
+  }
+  saveLocal(); render();
+}
+function escapeHtml(s){ const map={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}; return String(s||'').replace(/[&<>"']/g, ch=>map[ch]); }
+
+/* ---------- Quick edit (sidebar) + Enter to apply ---------- */
+function refreshQuickEdit(){
+  const ev = state.events.find(e=>e.id===state.selectedEventId);
+  if(!ev){
+    quickEditTarget.textContent='No activity selected';
+    quickRating.disabled=true; quickPrice.disabled=true; quickApply.disabled=true;
+    quickRating.value='0'; quickStars.textContent='☆☆☆☆☆'; quickPrice.value='';
+    return;
+  }
+  quickEditTarget.textContent = `Editing: ${ev.title}`;
+  quickRating.disabled=false; quickPrice.disabled=false; quickApply.disabled=false;
+  quickRating.value=String(ev.rating||0); quickStars.textContent=stars(ev.rating||0);
+  quickPrice.value = (ev.price||ev.price===0)? String(ev.price) : '';
+}
+quickRating.addEventListener('input', ()=>{ quickStars.textContent = stars(quickRating.value); });
+quickPrice.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); quickApply.click(); }});
+quickRating.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); quickApply.click(); }});
+quickApply.addEventListener('click', ()=>{
+  const ev = state.events.find(e=>e.id===state.selectedEventId); if(!ev) return;
+  ev.rating = Number(quickRating.value||0);
+  ev.price = quickPrice.value===''? undefined : Number(quickPrice.value||0);
+  saveEvent(ev); renderTopReviewed();
+});
+
+const quickDelete=$('#quickDelete');
+quickDelete.addEventListener('click', async ()=>{
+  const ev = state.events.find(e=>e.id===state.selectedEventId); if(!ev) return;
+  if(confirm('Delete this activity?')){ await deleteEventById(ev.id); state.selectedEventId=''; refreshQuickEdit(); }
+});
+
+/* ---------- Self-tests ---------- */
+(function runSelfTests(){
+  const assert=(c,m)=>{ if(!c) console.error('TEST FAIL:',m); };
+  assert(escapeHtml('<>&"\'')==='&lt;&gt;&amp;&quot;&#39;','escapeHtml converts core chars');
+  const tmp={ users:[], availability:{}, currentUserId:'' };
+  const u1={id:'u1',name:'A',color:'#000'}; tmp.users.push(u1); tmp.currentUserId='u1';
+  const k='2025-09-30'; (tmp.availability[k]||(tmp.availability[k]={}))[tmp.currentUserId]='am';
+  assert(tmp.availability[k].u1==='am','availability modes per user/day');
+})();
+
+(async function init(){
+  try{ await initFirebase(); }catch{}
+  liveBadge.textContent = FIREBASE_CONFIG? 'Live ready' : 'Local only';
+  const last = localStorage.getItem('last-room') || rooms[0] || 'general';
+  roomInput.value=last;
+  getSelfId();
+  joinRoom();
+  render();
+})();
+
+SINGLETON.teardown=()=>{ try{ if(SINGLETON.docHandler) document.removeEventListener('click', SINGLETON.docHandler); }catch{} try{ if(presenceInterval) clearInterval(presenceInterval); }catch{} };
+})();
+</script>
+</body>
+</html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Shared Calendar — Rooms, Presence & Multi-User Availability</title>
   <meta name="description" content="A single-file calendar with rooms, presence, and per-user availability. Optionally live via Firebase (paste your config)." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://www.gstatic.com; connect-src 'self' https://firestore.googleapis.com; object-src 'none'; base-uri 'none'">
@@ -196,10 +1240,10 @@ window[__SC_KEY__] = { teardown:null };
 const SINGLETON = window[__SC_KEY__];
 
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAKdrW--5amKlOZIZaBrhiZYnsw3xByFP4",
+ apiKey: "AIzaSyAKdrW--5amKIO2IZaBrhiZYnsw3xByFP4",
   authDomain: "calend-2aabe.firebaseapp.com",
   projectId: "calend-2aabe",
-  storageBucket: "calend-2aabe.appspot.com",
+  storageBucket: "calend-2aabe.firebasestorage.app",
   messagingSenderId: "70040581273",
   appId: "1:70040581273:web:c6852a7f467be95a457408",
   measurementId: "G-QLT6G2B5WQ"
